@@ -38,7 +38,6 @@ public class Mensagem implements java.io.Serializable{
 	
 	private String messageContent;
 	private String reqId;
-	private String requestOrigin;
 	private MessageType reqType;
 	private Responses res;
 	
@@ -56,14 +55,6 @@ public class Mensagem implements java.io.Serializable{
 
 	public void setReqId(String reqId) {
 		this.reqId = reqId;
-	}
-	
-	public String getRequestOrigin() {
-		return requestOrigin;
-	}
-	
-	public void setRequestOrigin(String requestOrigin) {
-		this.requestOrigin = requestOrigin;
 	}
 
 	public MessageType getReqType() {
