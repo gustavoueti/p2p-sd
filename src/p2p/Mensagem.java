@@ -1,6 +1,13 @@
 package p2p;
 
-public class Mensagem {
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
+
+public class Mensagem implements java.io.Serializable{
+	private static final long serialVersionUID = 1L;
+
 	public static enum MessageType {
 		SEARCH(1), RESPONSE(2);	
 		private final int value;
@@ -31,6 +38,7 @@ public class Mensagem {
 	
 	private String messageContent;
 	private String reqId;
+	private String requestOrigin;
 	private MessageType reqType;
 	private Responses res;
 	
@@ -49,6 +57,14 @@ public class Mensagem {
 	public void setReqId(String reqId) {
 		this.reqId = reqId;
 	}
+	
+	public String getRequestOrigin() {
+		return requestOrigin;
+	}
+	
+	public void setRequestOrigin(String requestOrigin) {
+		this.requestOrigin = requestOrigin;
+	}
 
 	public MessageType getReqType() {
 		return reqType;
@@ -64,6 +80,14 @@ public class Mensagem {
 
 	public void setRes(Responses res) {
 		this.res = res;
+	}
+	
+	public byte[] serialize() throws IOException {
+		ByteArrayOutputStream bStream = new ByteArrayOutputStream();
+		ObjectOutput oo = new ObjectOutputStream(bStream); 
+		oo.writeObject(this);
+		oo.close();
+		return bStream.toByteArray();
 	}
 	
 	public Mensagem(MessageType type, String content, String reqId) {
