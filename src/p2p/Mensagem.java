@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
+import java.net.InetAddress;
 
 public class Mensagem implements java.io.Serializable{
 	private static final long serialVersionUID = 1L;
@@ -40,6 +41,9 @@ public class Mensagem implements java.io.Serializable{
 	private String reqId;
 	private MessageType reqType;
 	private Responses res;
+	private Boolean forwardToOrigin = false;
+	private InetAddress requestOriginIP;
+	private int requestOriginPort;
 	
 	public String getMessageContent() {
 		return messageContent;
@@ -73,6 +77,30 @@ public class Mensagem implements java.io.Serializable{
 		this.res = res;
 	}
 	
+	public Boolean getForwardToOrigin() {
+		return forwardToOrigin;
+	}
+
+	public void setForwardToOrigin(Boolean forwardToOrigin) {
+		this.forwardToOrigin = forwardToOrigin;
+	}
+	
+	public InetAddress getRequestOriginIP() {
+		return requestOriginIP;
+	}
+
+	public void setRequestOriginIP(InetAddress requestOriginIP) {
+		this.requestOriginIP = requestOriginIP;
+	}
+
+	public int getRequestOriginPort() {
+		return requestOriginPort;
+	}
+
+	public void setRequestOriginPort(int requestOriginPort) {
+		this.requestOriginPort = requestOriginPort;
+	}
+
 	public byte[] serialize() throws IOException {
 		ByteArrayOutputStream bStream = new ByteArrayOutputStream();
 		ObjectOutput oo = new ObjectOutputStream(bStream); 
@@ -91,4 +119,5 @@ public class Mensagem implements java.io.Serializable{
 	public Mensagem() {
 		
 	}
+
 }

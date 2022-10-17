@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Scanner;
 
 public class Peer {
@@ -97,16 +98,22 @@ public class Peer {
 			}
 			
 			if(!found) {
+				if(!msg.getForwardToOrigin()) {
+					msg.setForwardToOrigin(true);
+					msg.setRequestOriginIP(pkg.getAddress());
+					msg.setRequestOriginPort(pkg.getPort());
+					pkg.setData(msg.serialize());
+				}
 				this.forwardRequest(pkg);
 			}
 			
 			this.processedRequests.put(reqId,true);
 		}
 		
-		private void sendResponse(DatagramPacket pkg,Mensagem recivedMsg) {
+		private void sendResponse(DatagramPacket pkg, Mensagem recivedMsg) {
 			try {
-				InetAddress requestorIP = pkg.getAddress();
-				int port = pkg.getPort();
+				InetAddress requestorIP = recivedMsg.getForwardToOrigin() ? recivedMsg.getRequestOriginIP() : pkg.getAddress();
+				int port = recivedMsg.getForwardToOrigin() ? recivedMsg.getRequestOriginPort() : pkg.getPort();
 				byte[] payload = new byte[1024];
 				String content = "peer com o arquivo procurado: " + this.fullIP + " " + recivedMsg.getMessageContent();
 				Mensagem msg = new Mensagem(Mensagem.MessageType.RESPONSE,content,recivedMsg.getReqId());
@@ -119,7 +126,8 @@ public class Peer {
 		}
 		
 		private void forwardRequest(DatagramPacket pkg) throws Exception {
-			String peerIP = this.neighbors.get((int) Math.random() * this.neighbors.size());
+			Random picker = new Random();
+			String peerIP = this.neighbors.get(picker.nextInt(this.neighbors.size()));
 			InetAddress ipAddress = InetAddress.getByName(peerIP.split(":")[0]);
 			int port = Integer.valueOf(peerIP.split(":")[1]);
 			pkg.setAddress(ipAddress);
@@ -246,7 +254,8 @@ public class Peer {
 			try {
 				DatagramSocket searchReqSocket = new DatagramSocket();
 				byte[] payload = new byte[1024];
-				String peerIP = this.peersIPs.get((int) Math.random() * this.peersIPs.size());
+				Random picker = new Random();
+				String peerIP = this.peersIPs.get(picker.nextInt(this.peersIPs.size()));
 				InetAddress ipAddress = InetAddress.getByName(peerIP.split(":")[0]);
 				int port = Integer.valueOf(peerIP.split(":")[1]);
 				String reqId = MD5.getMd5(this.peerId + new java.util.Date() + this.fileName);
