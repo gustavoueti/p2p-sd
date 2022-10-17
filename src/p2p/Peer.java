@@ -7,6 +7,7 @@ import java.math.BigInteger;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -39,19 +40,25 @@ public class Peer {
 	
 	public static class ListenThread extends Thread {
 		InetAddress peerIP;
-		int portNumber;
+		String fullIP;
 		File dirReference;
+		DatagramSocket listenSocket;
+		int portNumber;
 		Map<String,Boolean> processedRequests = new HashMap<String,Boolean>();
+		List<String> neighbors;
 		
-		public ListenThread(String peerIP, String dir) throws UnknownHostException {
+		
+		public ListenThread(String peerIP, List<String> neighbors, String dir) throws UnknownHostException {
 			this.peerIP = InetAddress.getByName(peerIP.split(":")[0]);
 			this.portNumber = Integer.valueOf(peerIP.split(":")[1]);
+			this.fullIP = peerIP;
 			this.dirReference = new File(dir);
+			this.neighbors = neighbors;
 		}
 		
 		public void run() {
 			try {
-				DatagramSocket listenSocket = new DatagramSocket(this.portNumber);
+				this.listenSocket = new DatagramSocket(this.portNumber);
 				while(true) {
 					byte[] messageBuffer = new byte[1024];
 					DatagramPacket message = new DatagramPacket(messageBuffer,messageBuffer.length);
@@ -59,13 +66,65 @@ public class Peer {
 					ObjectInputStream iStream = new ObjectInputStream(new ByteArrayInputStream(message.getData()));
 					Mensagem messageClass = (Mensagem) iStream.readObject();
 					iStream.close();
-					System.out.println(messageClass.getMessageContent());
-					System.out.println(messageClass.getReqType());
-					System.out.println(messageClass.getReqId());
+					this.handleRequest(message,messageClass);
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
+		}
+		
+		private void handleRequest(DatagramPacket pkg ,Mensagem msg) throws Exception {
+			String reqId = msg.getReqId();
+			String messageContent = msg.getMessageContent();
+			Boolean found = false;
+			Mensagem.MessageType reqType = msg.getReqType();
+			
+			if(this.processedRequests.containsKey(reqId)) {
+				return;
+			}
+			
+			if(reqType == Mensagem.MessageType.RESPONSE) {
+				return;
+			}
+			
+			String[] files = this.dirReference.list();
+			for(String file: files) {
+				if(file.equals(messageContent)) {
+					found = true;
+					this.sendResponse(pkg,msg);
+					break;
+				}
+			}
+			
+			if(!found) {
+				this.forwardRequest(pkg);
+			}
+			
+			this.processedRequests.put(reqId,true);
+		}
+		
+		private void sendResponse(DatagramPacket pkg,Mensagem recivedMsg) {
+			try {
+				InetAddress requestorIP = pkg.getAddress();
+				int port = pkg.getPort();
+				byte[] payload = new byte[1024];
+				String content = "peer com o arquivo procurado: " + this.fullIP + " " + recivedMsg.getMessageContent();
+				Mensagem msg = new Mensagem(Mensagem.MessageType.RESPONSE,content,recivedMsg.getReqId());
+				payload = msg.serialize();
+				DatagramPacket sendPackage = new DatagramPacket(payload,payload.length,requestorIP,port);
+				this.listenSocket.send(sendPackage);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		
+		private void forwardRequest(DatagramPacket pkg) throws Exception {
+			String peerIP = this.neighbors.get((int) Math.random() * this.neighbors.size());
+			InetAddress ipAddress = InetAddress.getByName(peerIP.split(":")[0]);
+			int port = Integer.valueOf(peerIP.split(":")[1]);
+			pkg.setAddress(ipAddress);
+			pkg.setPort(port);
+			this.listenSocket.send(pkg);
 		}
 	}
 	
@@ -122,7 +181,7 @@ public class Peer {
 		
 		private void initListen() {
 			try {
-				this.listener = new ListenThread(this.peerId, this.pathName);
+				this.listener = new ListenThread(this.peerId, this.peersIPList , this.pathName);
 			} catch (UnknownHostException e) {
 				e.printStackTrace();
 			}
@@ -174,7 +233,8 @@ public class Peer {
 	public static class SearchThread extends Thread {
 		private List<String> peersIPs;
 		private String fileName, peerId;
-		private int ttl = 2;
+		private static final int timeout = 5000;
+		Map<String,Boolean> processedRequests = new HashMap<String,Boolean>();
 		
 		public SearchThread(String fileName, String peerId ,List<String> peersIPs) {
 			this.peersIPs = peersIPs;
@@ -186,15 +246,44 @@ public class Peer {
 			try {
 				DatagramSocket searchReqSocket = new DatagramSocket();
 				byte[] payload = new byte[1024];
-				for(String peerIP: this.peersIPs) {
-					InetAddress ipAddress = InetAddress.getByName(peerIP.split(":")[0]);
-					int port = Integer.valueOf(peerIP.split(":")[1]);
-					String reqId = MD5.getMd5(this.peerId + new java.util.Date() + this.fileName);
-					Mensagem msg = new Mensagem(Mensagem.MessageType.SEARCH,this.fileName,reqId);
-					payload = msg.serialize();
-					DatagramPacket sendPackage = new DatagramPacket(payload,payload.length,ipAddress,port);
-					searchReqSocket.send(sendPackage);
+				String peerIP = this.peersIPs.get((int) Math.random() * this.peersIPs.size());
+				InetAddress ipAddress = InetAddress.getByName(peerIP.split(":")[0]);
+				int port = Integer.valueOf(peerIP.split(":")[1]);
+				String reqId = MD5.getMd5(this.peerId + new java.util.Date() + this.fileName);
+				Mensagem msg = new Mensagem(Mensagem.MessageType.SEARCH,this.fileName,reqId);
+				payload = msg.serialize();
+				DatagramPacket sendPackage = new DatagramPacket(payload,payload.length,ipAddress,port);
+				searchReqSocket.send(sendPackage);
+				searchReqSocket.setSoTimeout(timeout);
+				
+				try {
+					byte[] receivedBuffer = new byte[1024];
+					DatagramPacket message = new DatagramPacket(receivedBuffer,receivedBuffer.length);
+					searchReqSocket.receive(message);
+	
+					ObjectInputStream iStream = new ObjectInputStream(new ByteArrayInputStream(message.getData()));
+					Mensagem messageClass = (Mensagem) iStream.readObject();
+					iStream.close();
+					
+					if(messageClass.getReqType() != Mensagem.MessageType.RESPONSE) {
+						searchReqSocket.close();
+						return;
+					}
+					
+					String responseReqId = messageClass.getReqId();
+					if(this.processedRequests.containsKey(reqId)) {
+						searchReqSocket.close();
+						return;
+					}
+					
+					System.out.println(messageClass.getMessageContent());
+					this.processedRequests.put(responseReqId, true);
+					
+				} catch(SocketTimeoutException e) {
+					System.out.println("ninguém no sistema possui o arquivo " + this.fileName);
 				}
+				
+				searchReqSocket.close();
 			} catch(Exception e) {
 				e.printStackTrace();
 			}
